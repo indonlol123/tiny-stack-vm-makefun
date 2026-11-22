@@ -1,9 +1,4 @@
-// Tiny stack VM: a faithful, compact port of the reference VM
-// (generator/subject/vm.mjs in the kit; ISA.md is the spec, vm.mjs is the rule).
-// Every trap code, limit and edge case follows it exactly:
-// 32-bit wrapping arithmetic, Math.imul for exact MUL, unsigned DIVU/MODU/LTU,
-// INT_MIN/-1 for DIV and MOD, shift counts masked to 5 bits, PUSH8 sign
-// extension, EXIT low byte, traps 2..11, 1,000,000-step and 65,536-byte limits.
+// Tiny stack VM: faithful port of the reference VM (kit: generator/subject/vm.mjs, ISA.md).
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -21,14 +16,8 @@ for (const [o, i] of [
   [0x40, 0], [0x41, 0], [0x50, 0], [0x51, 0], [0x52, 0], [0x53, 0],
 ]) IMM[o] = i;
 
-// Stack effects per opcode byte, precomputed once so the hot loop does two
-// table lookups instead of a chain of comparisons. The values mirror the
-// reference exactly: arithmetic/logic ops (0x10-0x22) pop 2 and push 1,
-// except NEG (0x17) and NOT (0x1b) which pop 1 and push 1; DUP (0x04) pops 1
-// pushes 2, SWAP (0x05) 2/2, OVER (0x06) 2/3, ROT (0x07) 3/3; PUSH8/PUSH32/IN
-// (0x01, 0x02, 0x52) push 1; conditional jumps, LOAD, PRINT, PRINT_CHAR and
-// EXIT (0x31, 0x32, 0x40, 0x50, 0x51, 0x53) pop 1, with LOAD (0x40) also
-// pushing 1; STORE (0x41) pops 2; everything else touches no stack slot.
+// Stack effects per opcode, precomputed: two table lookups replace the
+// per-step comparison chain. Values mirror the reference exactly.
 const POPS = new Int8Array(256);
 const PUSHES = new Int8Array(256);
 for (let o = 0x10; o <= 0x22; o++) { POPS[o] = o === 0x17 || o === 0x1b ? 1 : 2; PUSHES[o] = 1; }
