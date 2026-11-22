@@ -21,6 +21,35 @@ for (const [o, i] of [
   [0x40, 0], [0x41, 0], [0x50, 0], [0x51, 0], [0x52, 0], [0x53, 0],
 ]) IMM[o] = i;
 
+// Stack effects per opcode byte, precomputed once so the hot loop does two
+// table lookups instead of a chain of comparisons. The values mirror the
+// reference exactly: arithmetic/logic ops (0x10-0x22) pop 2 and push 1,
+// except NEG (0x17) and NOT (0x1b) which pop 1 and push 1; DUP (0x04) pops 1
+// pushes 2, SWAP (0x05) 2/2, OVER (0x06) 2/3, ROT (0x07) 3/3; PUSH8/PUSH32/IN
+// (0x01, 0x02, 0x52) push 1; conditional jumps, LOAD, PRINT, PRINT_CHAR and
+// EXIT (0x31, 0x32, 0x40, 0x50, 0x51, 0x53) pop 1, with LOAD (0x40) also
+// pushing 1; STORE (0x41) pops 2; everything else touches no stack slot.
+const POPS = new Int8Array(256);
+const PUSHES = new Int8Array(256);
+for (let o = 0x10; o <= 0x22; o++) { POPS[o] = o === 0x17 || o === 0x1b ? 1 : 2; PUSHES[o] = 1; }
+POPS[0x03] = 1;
+POPS[0x04] = 1; PUSHES[0x04] = 2;
+POPS[0x05] = 2; PUSHES[0x05] = 2;
+POPS[0x06] = 2; PUSHES[0x06] = 3;
+POPS[0x07] = 3; PUSHES[0x07] = 3;
+PUSHES[0x01] = 1; PUSHES[0x02] = 1; PUSHES[0x52] = 1;
+POPS[0x31] = 1; POPS[0x32] = 1; POPS[0x40] = 1; PUSHES[0x40] = 1;
+POPS[0x50] = 1; POPS[0x51] = 1; POPS[0x53] = 1;
+POPS[0x41] = 2;
+for (const [o, i] of [
+  [0x00, 0], [0x01, 1], [0x02, 4], [0x03, 0], [0x04, 0], [0x05, 0], [0x06, 0], [0x07, 0],
+  [0x10, 0], [0x11, 0], [0x12, 0], [0x13, 0], [0x14, 0], [0x15, 0], [0x16, 0], [0x17, 0],
+  [0x18, 0], [0x19, 0], [0x1a, 0], [0x1b, 0], [0x1c, 0], [0x1d, 0], [0x1e, 0],
+  [0x20, 0], [0x21, 0], [0x22, 0],
+  [0x30, 2], [0x31, 2], [0x32, 2], [0x33, 2], [0x34, 0],
+  [0x40, 0], [0x41, 0], [0x50, 0], [0x51, 0], [0x52, 0], [0x53, 0],
+]) IMM[o] = i;
+
 function run(p: Uint8Array, inp: Uint8Array): { out: Uint8Array; code: number } {
   const n = p.length;
   const D = new Int32Array(256);
@@ -44,17 +73,7 @@ function run(p: Uint8Array, inp: Uint8Array): { out: Uint8Array; code: number } 
     steps++;
     const next = pc + 1 + imm;
     // Stack needs, in the reference's order: underflow, then overflow.
-    let pops = 0, pushes = 0;
-    if (op >= 0x10 && op <= 0x22) { pops = op === 0x17 || op === 0x1b ? 1 : 2; pushes = 1; }
-    else if (op === 0x03) pops = 1;
-    else if (op === 0x04) { pops = 1; pushes = 2; }
-    else if (op === 0x05) { pops = 2; pushes = 2; }
-    else if (op === 0x06) { pops = 2; pushes = 3; }
-    else if (op === 0x07) { pops = 3; pushes = 3; }
-    else if (op === 0x01 || op === 0x02 || op === 0x52) pushes = 1;
-    else if (op === 0x31 || op === 0x32 || op === 0x40 || op === 0x50 || op === 0x51 || op === 0x53) pops = 1;
-    else if (op === 0x41) pops = 2;
-    if (op === 0x40) pushes = 1;
+    const pops = POPS[op], pushes = PUSHES[op];
     if (sp < pops) return done(2);
     if (sp - pops + pushes > 256) return done(3);
     pc = next;
